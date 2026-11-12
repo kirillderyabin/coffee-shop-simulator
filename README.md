@@ -1,33 +1,33 @@
-# coffee-shop-simulator
-A cozy coffee shop simulator built with Python in 30 days.
+# Coffee Shop Simulator
+Уютный симулятор кофейни на Python, который планируется создать за 30 дней.
 
-## Project goal
+## Цель проекта
 
-Build a small Python coffee shop simulator step by step over 30 days.
-Start with a simple, understandable game loop and expand it as the basics work.
+За 30 дней шаг за шагом создать небольшой симулятор кофейни на Python.
+Начать с простого и понятного игрового цикла, а затем расширять игру по мере готовности основных механик.
 
-## First milestone: budget and ingredients
+## Первый этап: бюджет и ингредиенты
 
-The first playable milestone will let the player:
+В первой игровой версии игрок сможет:
 
-- See the current budget and stocks of coffee and milk.
-- Buy coffee and milk at clearly displayed prices.
-- Receive an explanation when a purchase exceeds the available budget.
-- See the updated budget and ingredient stocks after a purchase.
+- Смотреть текущий бюджет и запасы кофе и молока.
+- Покупать кофе и молоко по явно указанным ценам.
+- Получать объяснение, если на покупку не хватает денег.
+- Видеть обновлённый бюджет и запасы ингредиентов после покупки.
 
-Purchases should accept positive quantities only. Successful purchases deduct
-their cost from the budget and add the purchased ingredients to stock; rejected
-purchases leave both unchanged.
+Количество покупаемых ингредиентов должно быть положительным. При успешной покупке
+её стоимость вычитается из бюджета, а купленные ингредиенты пополняют запасы.
+При отклонённой покупке бюджет и запасы остаются без изменений.
 
-This milestone is complete when those actions work in a simple console menu.
-The starting budget, prices, and ingredient units will be chosen during
-implementation and displayed to the player.
+Этап будет завершён, когда эти действия будут доступны в простом консольном меню.
+Начальный бюджет, цены и единицы измерения ингредиентов будут выбраны во время
+разработки и показаны игроку.
 
-## Later milestones
+## Следующие этапы
 
-- Prepare drinks using ingredients.
-- Serve visitors and track sales revenue.
-- Save and load game progress.
+- Приготовление напитков из ингредиентов.
+- Обслуживание посетителей и учёт выручки.
+- Сохранение и загрузка игрового прогресса.
 
-This repository currently contains project documentation; game implementation
-will follow in small, reviewable steps.
+Сейчас репозиторий содержит документацию проекта. Игра будет разрабатываться
+небольшими шагами, чтобы каждое изменение было удобно проверить.
