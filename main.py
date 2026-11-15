@@ -1,4 +1,4 @@
-"""Симулятор кофейни: закупка ингредиентов и приготовление эспрессо."""
+"""Симулятор кофейни: закупка ингредиентов, эспрессо и латте."""
 
 from dataclasses import dataclass, field
 
@@ -19,6 +19,8 @@ INGREDIENTS = {
     "milk": Ingredient("Молоко", "пакет 1 л", 100, 1000, "мл"),
 }
 ESPRESSO_COFFEE_GRAMS = 18
+LATTE_COFFEE_GRAMS = 18
+LATTE_MILK_ML = 200
 
 
 @dataclass
@@ -53,6 +55,21 @@ class CoffeeShop:
             )
         self.stock["coffee"] -= ESPRESSO_COFFEE_GRAMS
 
+    def prepare_latte(self) -> None:
+        """Проверить весь рецепт перед списанием ингредиентов для одной чашки."""
+        if self.stock["coffee"] < LATTE_COFFEE_GRAMS:
+            raise ValueError(
+                f"Недостаточно кофе: нужно {LATTE_COFFEE_GRAMS} г, "
+                f"в запасе {self.stock['coffee']} г. Купите кофе."
+            )
+        if self.stock["milk"] < LATTE_MILK_ML:
+            raise ValueError(
+                f"Недостаточно молока: нужно {LATTE_MILK_ML} мл, "
+                f"в запасе {self.stock['milk']} мл. Купите молоко."
+            )
+        self.stock["coffee"] -= LATTE_COFFEE_GRAMS
+        self.stock["milk"] -= LATTE_MILK_ML
+
     def show_status(self) -> None:
         print(f"\nБюджет: {self.budget} руб.")
         for key, item in INGREDIENTS.items():
@@ -74,6 +91,10 @@ def main() -> None:
                     f"— {item.price} руб."
                 )
             print(f"4 — Приготовить эспрессо (расход: {ESPRESSO_COFFEE_GRAMS} г кофе)")
+            print(
+                f"5 — Приготовить латте (расход: {LATTE_COFFEE_GRAMS} г кофе "
+                f"и {LATTE_MILK_ML} мл молока)"
+            )
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -81,18 +102,22 @@ def main() -> None:
             if choice == "1":
                 shop.show_status()
                 continue
-            if choice == "4":
+            if choice in ("4", "5"):
                 try:
-                    shop.prepare_espresso()
+                    if choice == "4":
+                        shop.prepare_espresso()
+                    else:
+                        shop.prepare_latte()
                 except ValueError as error:
                     print(error)
                 else:
-                    print("Эспрессо готов! Продажа напитков пока недоступна.")
+                    drink = "Эспрессо" if choice == "4" else "Латте"
+                    print(f"{drink} готов! Продажа напитков пока недоступна.")
                     shop.show_status()
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                print("Выберите пункт меню: 0, 1, 2, 3 или 4.")
+                print("Выберите пункт меню: 0, 1, 2, 3, 4 или 5.")
                 continue
             try:
                 quantity = int(input("Количество упаковок: "))

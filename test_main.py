@@ -71,5 +71,46 @@ class EspressoTests(unittest.TestCase):
         self.assertEqual(shop.stock["coffee"], 248)
 
 
+class LatteTests(unittest.TestCase):
+    def test_latte_consumes_both_ingredients_without_changing_budget(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        shop.buy("milk", 1)
+        shop.prepare_latte()
+        self.assertEqual(shop.stock, {"coffee": 232, "milk": 800})
+        self.assertEqual(shop.budget, 2600)
+
+    def test_exact_recipe_amounts_are_enough(self):
+        shop = CoffeeShop(stock={"coffee": 18, "milk": 200})
+        shop.prepare_latte()
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+
+    def test_missing_ingredients_preserve_entire_state(self):
+        for coffee, milk, message in (
+            (0, 200, "Недостаточно кофе"),
+            (17, 200, "Недостаточно кофе"),
+            (18, 0, "Недостаточно молока"),
+            (18, 199, "Недостаточно молока"),
+            (0, 0, "Недостаточно кофе"),
+        ):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(stock={"coffee": coffee, "milk": milk})
+                before = (shop.budget, shop.stock.copy())
+                with self.assertRaisesRegex(ValueError, message):
+                    shop.prepare_latte()
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_milk_limits_repeated_preparation(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        shop.buy("milk", 1)
+        for _ in range(5):
+            shop.prepare_latte()
+        self.assertEqual(shop.stock, {"coffee": 160, "milk": 0})
+        with self.assertRaisesRegex(ValueError, "Недостаточно молока"):
+            shop.prepare_latte()
+        self.assertEqual(shop.stock, {"coffee": 160, "milk": 0})
+
+
 if __name__ == "__main__":
     unittest.main()
