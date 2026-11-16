@@ -1,6 +1,9 @@
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from unittest.mock import patch
 
-from main import CoffeeShop
+from main import CoffeeShop, main
 
 
 class PurchaseTests(unittest.TestCase):
@@ -110,6 +113,54 @@ class LatteTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Недостаточно молока"):
             shop.prepare_latte()
         self.assertEqual(shop.stock, {"coffee": 160, "milk": 0})
+
+
+class RecipeTests(unittest.TestCase):
+    def test_catalog_prepares_each_drink(self):
+        for drink, coffee, milk in (
+            ("espresso", 18, 0), ("latte", 18, 200), ("cappuccino", 18, 120),
+        ):
+            with self.subTest(drink=drink):
+                shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+                shop.prepare_drink(drink)
+                self.assertEqual(shop.stock, {"coffee": 250 - coffee, "milk": 1000 - milk})
+                self.assertEqual(shop.budget, 3000)
+
+    def test_cappuccino_exact_amounts(self):
+        shop = CoffeeShop(stock={"coffee": 18, "milk": 120})
+        shop.prepare_drink("cappuccino")
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+
+    def test_cappuccino_shortages_preserve_state(self):
+        for coffee, milk, message in (
+            (17, 120, "Недостаточно кофе"),
+            (18, 119, "Недостаточно молока"),
+            (0, 0, "Недостаточно кофе"),
+        ):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(stock={"coffee": coffee, "milk": milk})
+                before = (shop.budget, shop.stock.copy())
+                with self.assertRaisesRegex(ValueError, message):
+                    shop.prepare_drink("cappuccino")
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_unknown_drink_preserves_state(self):
+        shop = CoffeeShop()
+        before = (shop.budget, shop.stock.copy())
+        with self.assertRaisesRegex(ValueError, "Неизвестный напиток"):
+            shop.prepare_drink("unknown")
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_existing_menu_numbers_and_cappuccino(self):
+        output = StringIO()
+        with patch("builtins.input", side_effect=["2", "1", "3", "1", "4", "5", "6", "0"]):
+            with redirect_stdout(output):
+                main()
+        text = output.getvalue()
+        for name in ("Эспрессо", "Латте", "Капучино"):
+            self.assertIn(f"{name} готов!", text)
+        self.assertIn("Кофе: 196 г", text)
+        self.assertIn("Молоко: 680 мл", text)
 
 
 if __name__ == "__main__":
