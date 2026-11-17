@@ -3,7 +3,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import patch
 
-from main import CoffeeShop, main
+from main import CoffeeShop, RECIPES, main
 
 
 class PurchaseTests(unittest.TestCase):
@@ -161,6 +161,62 @@ class RecipeTests(unittest.TestCase):
             self.assertIn(f"{name} готов!", text)
         self.assertIn("Кофе: 196 г", text)
         self.assertIn("Молоко: 680 мл", text)
+
+
+class AvailabilityTests(unittest.TestCase):
+    def test_empty_stock_allows_no_cups(self):
+        shop = CoffeeShop()
+        for drink in RECIPES:
+            with self.subTest(drink=drink):
+                self.assertEqual(shop.available_cups(drink), 0)
+
+    def test_coffee_limits_all_drinks_and_rounds_down(self):
+        shop = CoffeeShop(stock={"coffee": 53, "milk": 1000})
+        for drink in RECIPES:
+            with self.subTest(drink=drink):
+                self.assertEqual(shop.available_cups(drink), 2)
+
+    def test_milk_limits_milk_drinks(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 399})
+        self.assertEqual(shop.available_cups("latte"), 1)
+        self.assertEqual(shop.available_cups("cappuccino"), 3)
+
+    def test_espresso_needs_no_milk(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 0})
+        self.assertEqual(shop.available_cups("espresso"), 13)
+        self.assertEqual(shop.available_cups("latte"), 0)
+        self.assertEqual(shop.available_cups("cappuccino"), 0)
+
+    def test_view_preserves_state_and_uses_current_stock(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        shop.buy("milk", 1)
+        before = (shop.budget, shop.stock.copy())
+        output = StringIO()
+        with redirect_stdout(output):
+            shop.show_recipes()
+            shop.show_recipes()
+        self.assertEqual((shop.budget, shop.stock), before)
+        self.assertIn("Латте — на чашку: кофе: 18 г, молоко: 200 мл; доступно чашек: 5", output.getvalue())
+        shop.prepare_latte()
+        self.assertEqual(shop.available_cups("latte"), 4)
+
+    def test_unknown_drink_preserves_state(self):
+        shop = CoffeeShop()
+        before = (shop.budget, shop.stock.copy())
+        with self.assertRaisesRegex(ValueError, "Неизвестный напиток"):
+            shop.available_cups("unknown")
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_menu_opens_view_and_returns_to_menu(self):
+        output = StringIO()
+        with patch("builtins.input", side_effect=["7", "2", "1", "7", "0"]):
+            with redirect_stdout(output):
+                main()
+        text = output.getvalue()
+        self.assertEqual(text.count("Рецепты и доступные чашки:"), 2)
+        self.assertIn("Эспрессо — на чашку: кофе: 18 г; доступно чашек: 0", text)
+        self.assertIn("Эспрессо — на чашку: кофе: 18 г; доступно чашек: 13", text)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,12 @@ class Recipe:
         amounts = {"coffee": self.coffee_grams, "milk": self.milk_ml}
         return {key: amount for key, amount in amounts.items() if amount > 0}
 
+    def describe(self) -> str:
+        return ", ".join(
+            f"{INGREDIENTS[item].name.lower()}: {amount} {INGREDIENTS[item].unit}"
+            for item, amount in self.requirements().items()
+        )
+
 
 # Порядок каталога сохраняет пункты меню: 4 — эспрессо, 5 — латте, 6 — капучино.
 RECIPES = {
@@ -88,6 +94,24 @@ class CoffeeShop:
     def prepare_latte(self) -> None:
         self.prepare_drink("latte")
 
+    def available_cups(self, drink: str) -> int:
+        """Сколько чашек одного напитка можно приготовить из текущих запасов."""
+        if drink not in RECIPES:
+            raise ValueError("Неизвестный напиток.")
+        return min(
+            self.stock[ingredient] // amount
+            for ingredient, amount in RECIPES[drink].requirements().items()
+        )
+
+    def show_recipes(self) -> None:
+        print("\nРецепты и доступные чашки:")
+        for key, recipe in RECIPES.items():
+            print(
+                f"{recipe.name} — на чашку: {recipe.describe()}; "
+                f"доступно чашек: {self.available_cups(key)}"
+            )
+        print("Каждый расчёт отдельный: напитки используют общие запасы.")
+
     def show_status(self) -> None:
         print(f"\nБюджет: {self.budget} руб.")
         for key, item in INGREDIENTS.items():
@@ -111,17 +135,17 @@ def main() -> None:
                 )
             for number, key in drink_choices.items():
                 recipe = RECIPES[key]
-                amounts = ", ".join(
-                    f"{INGREDIENTS[item].name.lower()}: {amount} {INGREDIENTS[item].unit}"
-                    for item, amount in recipe.requirements().items()
-                )
-                print(f"{number} — Приготовить {recipe.name.lower()} (расход: {amounts})")
+                print(f"{number} — Приготовить {recipe.name.lower()} (расход: {recipe.describe()})")
+            print("7 — Рецепты и доступные чашки")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
                 break
             if choice == "1":
                 shop.show_status()
+                continue
+            if choice == "7":
+                shop.show_recipes()
                 continue
             if choice in drink_choices:
                 drink_key = drink_choices[choice]
@@ -136,7 +160,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:
