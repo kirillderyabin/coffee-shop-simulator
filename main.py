@@ -71,11 +71,16 @@ class CoffeeShop:
         self.stock[ingredient] += item.amount * quantity
         return cost
 
-    def prepare_drink(self, drink: str) -> None:
-        """Проверить весь рецепт перед списанием ингредиентов для одной чашки."""
+    def prepare_drink(self, drink: str, quantity: int = 1) -> None:
+        """Проверить всю партию перед списанием; по умолчанию готовить чашку."""
         if drink not in RECIPES:
             raise ValueError("Неизвестный напиток.")
-        requirements = RECIPES[drink].requirements()
+        if type(quantity) is not int or quantity <= 0:
+            raise ValueError("Введите положительное целое количество чашек.")
+        requirements = {
+            ingredient: amount * quantity
+            for ingredient, amount in RECIPES[drink].requirements().items()
+        }
         for ingredient, amount in requirements.items():
             if self.stock[ingredient] < amount:
                 item = INGREDIENTS[ingredient]
@@ -137,6 +142,7 @@ def main() -> None:
                 recipe = RECIPES[key]
                 print(f"{number} — Приготовить {recipe.name.lower()} (расход: {recipe.describe()})")
             print("7 — Рецепты и доступные чашки")
+            print("8 — Приготовить несколько чашек одного напитка")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -146,6 +152,30 @@ def main() -> None:
                 continue
             if choice == "7":
                 shop.show_recipes()
+                continue
+            if choice == "8":
+                print("Выберите напиток для партии:")
+                for number, key in drink_choices.items():
+                    print(f"{number} — {RECIPES[key].name}")
+                drink_key = drink_choices.get(input("Номер напитка: ").strip())
+                if drink_key is None:
+                    print("Неизвестный напиток. Выберите номер из списка.")
+                    continue
+                try:
+                    quantity = int(input("Количество чашек: "))
+                except ValueError:
+                    print("Введите положительное целое количество чашек.")
+                    continue
+                try:
+                    shop.prepare_drink(drink_key, quantity)
+                except ValueError as error:
+                    print(error)
+                else:
+                    print(
+                        f"Партия готова: {RECIPES[drink_key].name}, чашек: {quantity}. "
+                        "Продажа напитков пока недоступна."
+                    )
+                    shop.show_status()
                 continue
             if choice in drink_choices:
                 drink_key = drink_choices[choice]
@@ -160,7 +190,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:

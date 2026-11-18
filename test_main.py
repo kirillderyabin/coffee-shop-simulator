@@ -219,5 +219,77 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIn("Эспрессо — на чашку: кофе: 18 г; доступно чашек: 13", text)
 
 
+class BatchTests(unittest.TestCase):
+    def test_batch_uses_scaled_recipe_and_preserves_budget(self):
+        for drink, expected in (
+            ("espresso", {"coffee": 196, "milk": 1000}),
+            ("latte", {"coffee": 196, "milk": 400}),
+            ("cappuccino", {"coffee": 196, "milk": 640}),
+        ):
+            with self.subTest(drink=drink):
+                shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+                shop.prepare_drink(drink, 3)
+                self.assertEqual(shop.stock, expected)
+                self.assertEqual(shop.budget, 3000)
+
+    def test_exact_batch_stock_is_enough(self):
+        shop = CoffeeShop(stock={"coffee": 54, "milk": 600})
+        shop.prepare_drink("latte", 3)
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+
+    def test_batch_espresso_needs_no_milk(self):
+        shop = CoffeeShop(stock={"coffee": 54, "milk": 0})
+        shop.prepare_drink("espresso", 3)
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+
+    def test_shortage_for_whole_batch_preserves_state(self):
+        for coffee, milk, message in (
+            (53, 600, "Недостаточно кофе: нужно 54 г"),
+            (54, 599, "Недостаточно молока: нужно 600 мл"),
+        ):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(stock={"coffee": coffee, "milk": milk})
+                before = (shop.budget, shop.stock.copy())
+                with self.assertRaisesRegex(ValueError, message):
+                    shop.prepare_drink("latte", 3)
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_invalid_quantities_preserve_state(self):
+        for quantity in (True, False, 1.0, 1.5, 0, -1, "2", None):
+            with self.subTest(quantity=quantity):
+                shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+                before = (shop.budget, shop.stock.copy())
+                with self.assertRaisesRegex(ValueError, "положительное целое количество чашек"):
+                    shop.prepare_drink("latte", quantity)
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_batch_menu_then_single_cup(self):
+        output = StringIO()
+        with patch("builtins.input", side_effect=[
+            "2", "1", "3", "1", "8", "5", "3", "4", "0",
+        ]):
+            with redirect_stdout(output):
+                main()
+        text = output.getvalue()
+        self.assertIn("Партия готова: Латте, чашек: 3", text)
+        self.assertIn("Эспрессо готов!", text)
+        self.assertIn("Кофе: 178 г", text)
+        self.assertIn("Молоко: 400 мл", text)
+
+    def test_invalid_batch_menu_input_returns_without_preparation(self):
+        for inputs, message in (
+            (["8", "9", "0"], "Неизвестный напиток"),
+            (["8", "5", "abc", "0"], "положительное целое количество чашек"),
+            (["8", "5", "0", "0"], "положительное целое количество чашек"),
+        ):
+            with self.subTest(inputs=inputs):
+                output = StringIO()
+                with patch("builtins.input", side_effect=inputs):
+                    with redirect_stdout(output):
+                        main()
+                self.assertIn(message, output.getvalue())
+                self.assertNotIn("Партия готова", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
