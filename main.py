@@ -48,6 +48,24 @@ RECIPES = {
 }
 
 
+def required_ingredients(drink: str, quantity: int) -> dict[str, int]:
+    if drink not in RECIPES:
+        raise ValueError("Неизвестный напиток.")
+    if type(quantity) is not int or quantity <= 0:
+        raise ValueError("Введите положительное целое количество чашек.")
+    return {
+        ingredient: amount * quantity
+        for ingredient, amount in RECIPES[drink].requirements().items()
+    }
+
+
+@dataclass(frozen=True)
+class PurchaseNeed:
+    missing: int
+    packages: int
+    cost: int
+
+
 @dataclass
 class CoffeeShop:
     budget: int = 3000
@@ -73,14 +91,7 @@ class CoffeeShop:
 
     def prepare_drink(self, drink: str, quantity: int = 1) -> None:
         """Проверить всю партию перед списанием; по умолчанию готовить чашку."""
-        if drink not in RECIPES:
-            raise ValueError("Неизвестный напиток.")
-        if type(quantity) is not int or quantity <= 0:
-            raise ValueError("Введите положительное целое количество чашек.")
-        requirements = {
-            ingredient: amount * quantity
-            for ingredient, amount in RECIPES[drink].requirements().items()
-        }
+        requirements = required_ingredients(drink, quantity)
         for ingredient, amount in requirements.items():
             if self.stock[ingredient] < amount:
                 item = INGREDIENTS[ingredient]
@@ -98,6 +109,34 @@ class CoffeeShop:
 
     def prepare_latte(self) -> None:
         self.prepare_drink("latte")
+
+    def plan_purchase(self, drink: str, quantity: int = 1) -> dict[str, PurchaseNeed]:
+        """Рассчитать только недостающие упаковки, не совершая покупок."""
+        plan = {}
+        for ingredient, amount in required_ingredients(drink, quantity).items():
+            item = INGREDIENTS[ingredient]
+            missing = max(0, amount - self.stock[ingredient])
+            packages = (missing + item.amount - 1) // item.amount
+            plan[ingredient] = PurchaseNeed(missing, packages, packages * item.price)
+        return plan
+
+    def show_purchase_plan(self, drink: str, quantity: int) -> None:
+        plan = self.plan_purchase(drink, quantity)
+        print(f"\nПлан закупки: {RECIPES[drink].name}, чашек: {quantity}.")
+        for ingredient, need in plan.items():
+            item = INGREDIENTS[ingredient]
+            print(
+                f"{item.name}: не хватает {need.missing} {item.unit}; "
+                f"купить упаковок ({item.package}): {need.packages}; "
+                f"стоимость: {need.cost} руб."
+            )
+        total = sum(need.cost for need in plan.values())
+        print(f"Общая стоимость закупки: {total} руб. Бюджет: {self.budget} руб.")
+        if total <= self.budget:
+            print("Бюджета хватает.")
+        else:
+            print(f"Бюджета не хватает: нужно ещё {total - self.budget} руб.")
+        print("Это только расчёт: покупки не выполнены, запасы и бюджет не изменены.")
 
     def available_cups(self, drink: str) -> int:
         """Сколько чашек одного напитка можно приготовить из текущих запасов."""
@@ -143,6 +182,7 @@ def main() -> None:
                 print(f"{number} — Приготовить {recipe.name.lower()} (расход: {recipe.describe()})")
             print("7 — Рецепты и доступные чашки")
             print("8 — Приготовить несколько чашек одного напитка")
+            print("9 — Рассчитать закупку под напиток")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -153,8 +193,8 @@ def main() -> None:
             if choice == "7":
                 shop.show_recipes()
                 continue
-            if choice == "8":
-                print("Выберите напиток для партии:")
+            if choice in ("8", "9"):
+                print("Выберите напиток:")
                 for number, key in drink_choices.items():
                     print(f"{number} — {RECIPES[key].name}")
                 drink_key = drink_choices.get(input("Номер напитка: ").strip())
@@ -167,6 +207,9 @@ def main() -> None:
                     print("Введите положительное целое количество чашек.")
                     continue
                 try:
+                    if choice == "9":
+                        shop.show_purchase_plan(drink_key, quantity)
+                        continue
                     shop.prepare_drink(drink_key, quantity)
                 except ValueError as error:
                     print(error)
@@ -190,7 +233,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:

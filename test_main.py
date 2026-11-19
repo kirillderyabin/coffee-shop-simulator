@@ -3,7 +3,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import patch
 
-from main import CoffeeShop, RECIPES, main
+from main import CoffeeShop, PurchaseNeed, RECIPES, main
 
 
 class PurchaseTests(unittest.TestCase):
@@ -289,6 +289,78 @@ class BatchTests(unittest.TestCase):
                         main()
                 self.assertIn(message, output.getvalue())
                 self.assertNotIn("Партия готова", output.getvalue())
+
+
+class PurchasePlanTests(unittest.TestCase):
+    def test_sufficient_and_exact_stock_require_no_purchase(self):
+        for coffee, milk in ((54, 600), (250, 1000)):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(stock={"coffee": coffee, "milk": milk})
+                self.assertEqual(shop.plan_purchase("latte", 3), {
+                    "coffee": PurchaseNeed(0, 0, 0),
+                    "milk": PurchaseNeed(0, 0, 0),
+                })
+
+    def test_shortage_of_each_ingredient(self):
+        for coffee, milk, expected in (
+            (53, 600, {"coffee": PurchaseNeed(1, 1, 300), "milk": PurchaseNeed(0, 0, 0)}),
+            (54, 599, {"coffee": PurchaseNeed(0, 0, 0), "milk": PurchaseNeed(1, 1, 100)}),
+        ):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(stock={"coffee": coffee, "milk": milk})
+                self.assertEqual(shop.plan_purchase("latte", 3), expected)
+
+    def test_rounds_up_only_missing_amount(self):
+        shop = CoffeeShop(stock={"coffee": 2, "milk": 800})
+        self.assertEqual(shop.plan_purchase("latte", 14), {
+            "coffee": PurchaseNeed(250, 1, 300),
+            "milk": PurchaseNeed(2000, 2, 200),
+        })
+        shop = CoffeeShop(stock={"coffee": 1, "milk": 799})
+        self.assertEqual(shop.plan_purchase("latte", 14), {
+            "coffee": PurchaseNeed(251, 2, 600),
+            "milk": PurchaseNeed(2001, 3, 300),
+        })
+
+    def test_espresso_requires_no_milk_purchase(self):
+        shop = CoffeeShop()
+        self.assertEqual(shop.plan_purchase("espresso", 2), {
+            "coffee": PurchaseNeed(36, 1, 300),
+        })
+
+    def test_invalid_input_preserves_state(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        before = (shop.budget, shop.stock.copy())
+        for quantity in (True, False, 1.0, 1.5, 0, -1, "2", None):
+            with self.subTest(quantity=quantity):
+                with self.assertRaisesRegex(ValueError, "положительное целое количество чашек"):
+                    shop.plan_purchase("latte", quantity)
+                self.assertEqual((shop.budget, shop.stock), before)
+        with self.assertRaisesRegex(ValueError, "Неизвестный напиток"):
+            shop.plan_purchase("unknown", 1)
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_report_total_budget_and_no_mutations(self):
+        for budget, message in ((400, "Бюджета хватает."), (399, "нужно ещё 1 руб.")):
+            with self.subTest(budget=budget):
+                shop = CoffeeShop(budget=budget)
+                before = (shop.budget, shop.stock.copy())
+                output = StringIO()
+                with redirect_stdout(output):
+                    shop.show_purchase_plan("latte", 3)
+                self.assertIn("Общая стоимость закупки: 400 руб.", output.getvalue())
+                self.assertIn(message, output.getvalue())
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_menu_plan_does_not_buy_or_prepare(self):
+        output = StringIO()
+        with patch("builtins.input", side_effect=["9", "5", "3", "1", "0"]):
+            with redirect_stdout(output):
+                main()
+        text = output.getvalue()
+        self.assertIn("Общая стоимость закупки: 400 руб.", text)
+        self.assertEqual(text.count("Бюджет: 3000 руб.\nКофе: 0 г\nМолоко: 0 мл"), 2)
+        self.assertNotIn("Партия готова", text)
 
 
 if __name__ == "__main__":
