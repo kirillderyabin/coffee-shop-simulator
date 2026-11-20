@@ -120,7 +120,20 @@ class CoffeeShop:
             plan[ingredient] = PurchaseNeed(missing, packages, packages * item.price)
         return plan
 
-    def show_purchase_plan(self, drink: str, quantity: int) -> None:
+    def buy_missing(self, drink: str, quantity: int = 1) -> int:
+        """Купить весь план после проверки общей суммы; вернуть стоимость."""
+        plan = self.plan_purchase(drink, quantity)
+        total = sum(need.cost for need in plan.values())
+        if total > self.budget:
+            raise ValueError(
+                f"Недостаточно денег: нужно {total} руб., доступно {self.budget} руб."
+            )
+        for ingredient, need in plan.items():
+            self.stock[ingredient] += need.packages * INGREDIENTS[ingredient].amount
+        self.budget -= total
+        return total
+
+    def show_purchase_plan(self, drink: str, quantity: int) -> int:
         plan = self.plan_purchase(drink, quantity)
         print(f"\nПлан закупки: {RECIPES[drink].name}, чашек: {quantity}.")
         for ingredient, need in plan.items():
@@ -137,6 +150,7 @@ class CoffeeShop:
         else:
             print(f"Бюджета не хватает: нужно ещё {total - self.budget} руб.")
         print("Это только расчёт: покупки не выполнены, запасы и бюджет не изменены.")
+        return total
 
     def available_cups(self, drink: str) -> int:
         """Сколько чашек одного напитка можно приготовить из текущих запасов."""
@@ -183,6 +197,7 @@ def main() -> None:
             print("7 — Рецепты и доступные чашки")
             print("8 — Приготовить несколько чашек одного напитка")
             print("9 — Рассчитать закупку под напиток")
+            print("10 — Купить недостающие ингредиенты под напиток")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -193,7 +208,7 @@ def main() -> None:
             if choice == "7":
                 shop.show_recipes()
                 continue
-            if choice in ("8", "9"):
+            if choice in ("8", "9", "10"):
                 print("Выберите напиток:")
                 for number, key in drink_choices.items():
                     print(f"{number} — {RECIPES[key].name}")
@@ -207,8 +222,23 @@ def main() -> None:
                     print("Введите положительное целое количество чашек.")
                     continue
                 try:
-                    if choice == "9":
-                        shop.show_purchase_plan(drink_key, quantity)
+                    if choice in ("9", "10"):
+                        total = shop.show_purchase_plan(drink_key, quantity)
+                        if choice == "9":
+                            continue
+                        if total == 0:
+                            print("Ингредиентов достаточно. Покупка не требуется.")
+                            continue
+                        if total > shop.budget:
+                            print("Закупка не выполнена: недостаточно денег на весь план.")
+                            continue
+                        answer = input('Подтвердить покупку всех упаковок? Введите «да»: ')
+                        if answer.strip().lower() != "да":
+                            print("Закупка отменена. Бюджет и запасы не изменены.")
+                            continue
+                        cost = shop.buy_missing(drink_key, quantity)
+                        print(f"Закупка выполнена. Потрачено: {cost} руб. Напитки не приготовлены.")
+                        shop.show_status()
                         continue
                     shop.prepare_drink(drink_key, quantity)
                 except ValueError as error:
@@ -233,7 +263,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:

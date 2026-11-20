@@ -363,5 +363,97 @@ class PurchasePlanTests(unittest.TestCase):
         self.assertNotIn("Партия готова", text)
 
 
+class BuyMissingTests(unittest.TestCase):
+    def test_buys_both_ingredients_without_preparing_drinks(self):
+        shop = CoffeeShop(stock={"coffee": 10, "milk": 100})
+        self.assertEqual(shop.buy_missing("latte", 3), 400)
+        self.assertEqual(shop.stock, {"coffee": 260, "milk": 1100})
+        self.assertEqual(shop.budget, 2600)
+
+    def test_exact_budget_is_enough(self):
+        shop = CoffeeShop(budget=400)
+        self.assertEqual(shop.buy_missing("latte", 3), 400)
+        self.assertEqual(shop.budget, 0)
+        self.assertEqual(shop.stock, {"coffee": 250, "milk": 1000})
+
+    def test_insufficient_total_budget_does_not_buy_part_of_plan(self):
+        shop = CoffeeShop(budget=399)
+        before = (shop.budget, shop.stock.copy())
+        with self.assertRaisesRegex(ValueError, "Недостаточно денег: нужно 400 руб."):
+            shop.buy_missing("latte", 3)
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_no_shortage_costs_nothing_even_with_empty_budget(self):
+        shop = CoffeeShop(budget=0, stock={"coffee": 54, "milk": 600})
+        before = (shop.budget, shop.stock.copy())
+        self.assertEqual(shop.buy_missing("latte", 3), 0)
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_only_missing_ingredient_is_bought(self):
+        shop = CoffeeShop(stock={"coffee": 54, "milk": 599})
+        self.assertEqual(shop.buy_missing("latte", 3), 100)
+        self.assertEqual(shop.stock, {"coffee": 54, "milk": 1599})
+
+    def test_invalid_input_leaves_state_unchanged(self):
+        shop = CoffeeShop()
+        before = (shop.budget, shop.stock.copy())
+        for quantity in (0, -1, True, False, 1.0, 1.5, "2", None):
+            with self.subTest(quantity=quantity):
+                with self.assertRaises(ValueError):
+                    shop.buy_missing("latte", quantity)
+                self.assertEqual((shop.budget, shop.stock), before)
+        with self.assertRaisesRegex(ValueError, "Неизвестный напиток"):
+            shop.buy_missing("unknown")
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def run_menu(self, shop, inputs):
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=inputs):
+                with redirect_stdout(output):
+                    main()
+        return output.getvalue()
+
+    def test_menu_requires_explicit_confirmation(self):
+        for answer in ("нет", "", "yes", "непонятно"):
+            with self.subTest(answer=answer):
+                shop = CoffeeShop()
+                before = (shop.budget, shop.stock.copy())
+                text = self.run_menu(shop, ["10", "5", "3", answer, "0"])
+                self.assertIn("Общая стоимость закупки: 400 руб.", text)
+                self.assertIn("Закупка отменена", text)
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_menu_confirmed_purchase(self):
+        shop = CoffeeShop()
+        text = self.run_menu(shop, ["10", "5", "3", " Да ", "0"])
+        self.assertIn("Закупка выполнена. Потрачено: 400 руб.", text)
+        self.assertEqual(shop.budget, 2600)
+        self.assertEqual(shop.stock, {"coffee": 250, "milk": 1000})
+
+    def test_menu_handles_insufficient_budget_and_no_shortage(self):
+        for shop, message in (
+            (CoffeeShop(budget=399), "Закупка не выполнена"),
+            (CoffeeShop(stock={"coffee": 54, "milk": 600}), "Покупка не требуется"),
+        ):
+            with self.subTest(message=message):
+                before = (shop.budget, shop.stock.copy())
+                text = self.run_menu(shop, ["10", "5", "3", "0"])
+                self.assertIn(message, text)
+                self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_menu_rejects_invalid_drink_and_quantity(self):
+        for inputs in (
+            ["10", "11", "0"], ["10", "5", "abc", "0"],
+            ["10", "5", "0", "0"], ["10", "5", "-1", "0"],
+        ):
+            with self.subTest(inputs=inputs):
+                shop = CoffeeShop()
+                before = (shop.budget, shop.stock.copy())
+                text = self.run_menu(shop, inputs)
+                self.assertNotIn("Закупка выполнена", text)
+                self.assertEqual((shop.budget, shop.stock), before)
+
+
 if __name__ == "__main__":
     unittest.main()
