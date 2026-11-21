@@ -66,12 +66,44 @@ class PurchaseNeed:
     cost: int
 
 
+@dataclass(frozen=True)
+class Order:
+    drink: str
+    quantity: int
+
+    def __post_init__(self) -> None:
+        required_ingredients(self.drink, self.quantity)
+
+
 @dataclass
 class CoffeeShop:
     budget: int = 3000
     stock: dict[str, int] = field(
         default_factory=lambda: {key: 0 for key in INGREDIENTS}
     )
+    current_order: Order | None = None
+    visitors_invited: int = 0
+
+    def invite_visitor(self) -> Order:
+        """Пригласить посетителя по предсказуемому циклу без замены заказа."""
+        if self.current_order is not None:
+            raise ValueError("Уже есть незавершённый заказ. Новый посетитель пока не приглашён.")
+        drinks = tuple(RECIPES)
+        order = Order(
+            drinks[self.visitors_invited % len(drinks)],
+            self.visitors_invited % 3 + 1,
+        )
+        self.current_order = order
+        self.visitors_invited += 1
+        return order
+
+    def show_order(self) -> None:
+        if self.current_order is None:
+            print("Текущего заказа нет. Пригласите посетителя через пункт 11.")
+            return
+        order = self.current_order
+        print(f"Текущий заказ: {RECIPES[order.drink].name}, чашек: {order.quantity}.")
+        print("Заказ ожидает обслуживания. Обслуживание и оплата появятся позже.")
 
     def buy(self, ingredient: str, quantity: int) -> int:
         """Купить упаковки и вернуть стоимость; при ошибке сохранить состояние."""
@@ -198,6 +230,8 @@ def main() -> None:
             print("8 — Приготовить несколько чашек одного напитка")
             print("9 — Рассчитать закупку под напиток")
             print("10 — Купить недостающие ингредиенты под напиток")
+            print("11 — Пригласить посетителя")
+            print("12 — Посмотреть текущий заказ")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -207,6 +241,18 @@ def main() -> None:
                 continue
             if choice == "7":
                 shop.show_recipes()
+                continue
+            if choice == "11":
+                try:
+                    shop.invite_visitor()
+                except ValueError as error:
+                    print(error)
+                else:
+                    print("Посетитель пришёл!")
+                    shop.show_order()
+                continue
+            if choice == "12":
+                shop.show_order()
                 continue
             if choice in ("8", "9", "10"):
                 print("Выберите напиток:")
@@ -263,7 +309,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:

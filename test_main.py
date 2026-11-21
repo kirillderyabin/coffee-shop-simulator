@@ -3,7 +3,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import patch
 
-from main import CoffeeShop, PurchaseNeed, RECIPES, main
+from main import CoffeeShop, Order, PurchaseNeed, RECIPES, main
 
 
 class PurchaseTests(unittest.TestCase):
@@ -453,6 +453,80 @@ class BuyMissingTests(unittest.TestCase):
                 text = self.run_menu(shop, inputs)
                 self.assertNotIn("Закупка выполнена", text)
                 self.assertEqual((shop.budget, shop.stock), before)
+
+
+class VisitorTests(unittest.TestCase):
+    def test_invitation_creates_catalog_order_without_spending_resources(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        before = (shop.budget, shop.stock.copy())
+        order = shop.invite_visitor()
+        self.assertEqual(order, Order("espresso", 1))
+        self.assertIs(shop.current_order, order)
+        self.assertEqual(shop.visitors_invited, 1)
+        self.assertEqual((shop.budget, shop.stock), before)
+
+    def test_deterministic_cycle_uses_catalog_and_positive_quantities(self):
+        for index, expected in enumerate((
+            Order("espresso", 1), Order("latte", 2),
+            Order("cappuccino", 3), Order("espresso", 1),
+        )):
+            with self.subTest(index=index):
+                shop = CoffeeShop(visitors_invited=index)
+                self.assertEqual(shop.invite_visitor(), expected)
+
+    def test_active_order_is_not_replaced(self):
+        shop = CoffeeShop()
+        order = shop.invite_visitor()
+        before = (shop.budget, shop.stock.copy(), shop.visitors_invited)
+        with self.assertRaisesRegex(ValueError, "незавершённый заказ"):
+            shop.invite_visitor()
+        self.assertIs(shop.current_order, order)
+        self.assertEqual((shop.budget, shop.stock, shop.visitors_invited), before)
+
+    def test_order_rejects_unknown_drink_and_invalid_quantities(self):
+        with self.assertRaisesRegex(ValueError, "Неизвестный напиток"):
+            Order("unknown", 1)
+        for quantity in (0, -1, True, 1.5, "2"):
+            with self.subTest(quantity=quantity):
+                with self.assertRaises(ValueError):
+                    Order("latte", quantity)
+
+    def test_view_is_read_only_with_and_without_order(self):
+        for order in (None, Order("latte", 2)):
+            with self.subTest(order=order):
+                shop = CoffeeShop(current_order=order)
+                before = (shop.budget, shop.stock.copy(), shop.current_order, shop.visitors_invited)
+                output = StringIO()
+                with redirect_stdout(output):
+                    shop.show_order()
+                    shop.show_order()
+                self.assertEqual(
+                    (shop.budget, shop.stock, shop.current_order, shop.visitors_invited), before
+                )
+                expected = "Текущего заказа нет" if order is None else "Латте, чашек: 2"
+                self.assertIn(expected, output.getvalue())
+
+    def test_preparing_drink_does_not_complete_order(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        order = shop.invite_visitor()
+        shop.prepare_drink(order.drink, order.quantity)
+        self.assertIs(shop.current_order, order)
+        self.assertEqual(shop.budget, 3000)
+
+    def test_menu_invites_views_and_rejects_second_invitation(self):
+        shop = CoffeeShop()
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=["12", "11", "12", "11", "0"]):
+                with redirect_stdout(output):
+                    main()
+        text = output.getvalue()
+        self.assertIn("Текущего заказа нет", text)
+        self.assertIn("Текущий заказ: Эспрессо, чашек: 1", text)
+        self.assertIn("незавершённый заказ", text)
+        self.assertEqual(shop.visitors_invited, 1)
+        self.assertEqual(shop.budget, 3000)
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
 
 
 if __name__ == "__main__":
