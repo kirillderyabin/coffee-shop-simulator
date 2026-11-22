@@ -3,7 +3,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import patch
 
-from main import CoffeeShop, Order, PurchaseNeed, RECIPES, main
+from main import CoffeeShop, Order, PurchaseNeed, Recipe, RECIPES, main
 
 
 class PurchaseTests(unittest.TestCase):
@@ -527,6 +527,114 @@ class VisitorTests(unittest.TestCase):
         self.assertEqual(shop.visitors_invited, 1)
         self.assertEqual(shop.budget, 3000)
         self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+
+
+class ServiceTests(unittest.TestCase):
+    def snapshot(self, shop):
+        return (shop.budget, shop.stock.copy(), shop.current_order,
+                shop.revenue, shop.visitors_invited)
+
+    def test_serves_entire_order_with_exact_stock(self):
+        shop = CoffeeShop(stock={"coffee": 36, "milk": 400}, current_order=Order("latte", 2))
+        self.assertEqual(shop.serve_order(), 400)
+        self.assertEqual(shop.stock, {"coffee": 0, "milk": 0})
+        self.assertEqual(shop.budget, 3400)
+        self.assertEqual(shop.revenue, 400)
+        self.assertIsNone(shop.current_order)
+
+    def test_shortage_of_either_ingredient_preserves_everything(self):
+        for coffee, milk, message in (
+            (35, 400, "Недостаточно кофе"), (36, 399, "Недостаточно молока"),
+        ):
+            with self.subTest(coffee=coffee, milk=milk):
+                shop = CoffeeShop(
+                    stock={"coffee": coffee, "milk": milk},
+                    current_order=Order("latte", 2), revenue=120, visitors_invited=2,
+                )
+                before = self.snapshot(shop)
+                with self.assertRaisesRegex(ValueError, message):
+                    shop.serve_order()
+                self.assertEqual(self.snapshot(shop), before)
+
+    def test_no_order_or_repeated_service_cannot_charge(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 0})
+        before = self.snapshot(shop)
+        with self.assertRaisesRegex(ValueError, "Текущего заказа нет"):
+            shop.serve_order()
+        self.assertEqual(self.snapshot(shop), before)
+        shop.invite_visitor()
+        shop.serve_order()
+        after_sale = self.snapshot(shop)
+        with self.assertRaisesRegex(ValueError, "Текущего заказа нет"):
+            shop.serve_order()
+        self.assertEqual(self.snapshot(shop), after_sale)
+        self.assertEqual(shop.revenue, 120)
+        self.assertEqual(shop.budget, 3120)
+        self.assertEqual(shop.stock["coffee"], 232)
+
+    def test_sequential_visitors_accumulate_gross_revenue(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        shop.buy("milk", 1)
+        for drink, quantity, total in (
+            ("espresso", 1, 120), ("latte", 2, 400), ("cappuccino", 3, 540),
+        ):
+            self.assertEqual(shop.invite_visitor(), Order(drink, quantity))
+            self.assertEqual(shop.serve_order(), total)
+        self.assertEqual(shop.revenue, 1060)
+        self.assertEqual(shop.budget, 3660)
+        self.assertEqual(shop.stock, {"coffee": 142, "milk": 240})
+        shop.buy("milk", 1)
+        self.assertEqual(shop.revenue, 1060)
+        self.assertEqual(shop.budget, 3560)
+        self.assertEqual(shop.invite_visitor(), Order("espresso", 1))
+
+    def test_training_preparation_does_not_sell_or_complete_order(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        order = shop.invite_visitor()
+        shop.prepare_espresso()
+        shop.prepare_latte()
+        shop.prepare_drink("cappuccino", 2)
+        self.assertIs(shop.current_order, order)
+        self.assertEqual(shop.revenue, 0)
+        self.assertEqual(shop.budget, 3000)
+
+    def test_order_total_and_price_validation(self):
+        self.assertEqual(Order("espresso", 1).total, 120)
+        self.assertEqual(Order("latte", 2).total, 400)
+        self.assertEqual(Order("cappuccino", 3).total, 540)
+        for price in (0, -1, True, 1.5):
+            with self.subTest(price=price):
+                with self.assertRaises(ValueError):
+                    Recipe("Тест", 18, price=price)
+
+    def test_order_and_status_show_amounts(self):
+        shop = CoffeeShop(current_order=Order("latte", 2), revenue=120)
+        before = self.snapshot(shop)
+        output = StringIO()
+        with redirect_stdout(output):
+            shop.show_order()
+            shop.show_status()
+        self.assertIn("Сумма заказа: 400 руб.", output.getvalue())
+        self.assertIn("Выручка (валовые продажи, не прибыль): 120 руб.", output.getvalue())
+        self.assertEqual(self.snapshot(shop), before)
+
+    def test_menu_service_retry_then_next_visitor(self):
+        shop = CoffeeShop()
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=[
+                "11", "13", "2", "1", "13", "13", "11", "12", "0",
+            ]):
+                with redirect_stdout(output):
+                    main()
+        text = output.getvalue()
+        self.assertIn("Недостаточно кофе", text)
+        self.assertEqual(text.count("Заказ выполнен! Получено: 120 руб."), 1)
+        self.assertIn("Сумма заказа: 400 руб.", text)
+        self.assertEqual(shop.current_order, Order("latte", 2))
+        self.assertEqual(shop.revenue, 120)
+        self.assertEqual(shop.budget, 2820)
 
 
 if __name__ == "__main__":

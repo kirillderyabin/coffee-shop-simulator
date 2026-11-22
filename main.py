@@ -27,7 +27,12 @@ LATTE_MILK_ML = 200
 class Recipe:
     name: str
     coffee_grams: int
+    price: int
     milk_ml: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.price) is not int or self.price <= 0:
+            raise ValueError("Цена напитка должна быть положительным целым числом рублей.")
 
     def requirements(self) -> dict[str, int]:
         amounts = {"coffee": self.coffee_grams, "milk": self.milk_ml}
@@ -42,9 +47,9 @@ class Recipe:
 
 # Порядок каталога сохраняет пункты меню: 4 — эспрессо, 5 — латте, 6 — капучино.
 RECIPES = {
-    "espresso": Recipe("Эспрессо", ESPRESSO_COFFEE_GRAMS),
-    "latte": Recipe("Латте", LATTE_COFFEE_GRAMS, LATTE_MILK_ML),
-    "cappuccino": Recipe("Капучино", 18, 120),
+    "espresso": Recipe("Эспрессо", ESPRESSO_COFFEE_GRAMS, price=120),
+    "latte": Recipe("Латте", LATTE_COFFEE_GRAMS, price=200, milk_ml=LATTE_MILK_ML),
+    "cappuccino": Recipe("Капучино", 18, price=180, milk_ml=120),
 }
 
 
@@ -74,6 +79,10 @@ class Order:
     def __post_init__(self) -> None:
         required_ingredients(self.drink, self.quantity)
 
+    @property
+    def total(self) -> int:
+        return RECIPES[self.drink].price * self.quantity
+
 
 @dataclass
 class CoffeeShop:
@@ -83,6 +92,7 @@ class CoffeeShop:
     )
     current_order: Order | None = None
     visitors_invited: int = 0
+    revenue: int = 0
 
     def invite_visitor(self) -> Order:
         """Пригласить посетителя по предсказуемому циклу без замены заказа."""
@@ -103,7 +113,20 @@ class CoffeeShop:
             return
         order = self.current_order
         print(f"Текущий заказ: {RECIPES[order.drink].name}, чашек: {order.quantity}.")
-        print("Заказ ожидает обслуживания. Обслуживание и оплата появятся позже.")
+        print(f"Цена за чашку: {RECIPES[order.drink].price} руб. Сумма заказа: {order.total} руб.")
+        print("Заказ ожидает обслуживания. Для приготовления и продажи выберите пункт 13.")
+
+    def serve_order(self) -> int:
+        """Приготовить весь заказ и получить оплату ровно один раз."""
+        if self.current_order is None:
+            raise ValueError("Текущего заказа нет. Пригласите посетителя через пункт 11.")
+        order = self.current_order
+        total = order.total
+        self.prepare_drink(order.drink, order.quantity)
+        self.budget += total
+        self.revenue += total
+        self.current_order = None
+        return total
 
     def buy(self, ingredient: str, quantity: int) -> int:
         """Купить упаковки и вернуть стоимость; при ошибке сохранить состояние."""
@@ -198,7 +221,7 @@ class CoffeeShop:
         for key, recipe in RECIPES.items():
             print(
                 f"{recipe.name} — на чашку: {recipe.describe()}; "
-                f"доступно чашек: {self.available_cups(key)}"
+                f"доступно чашек: {self.available_cups(key)}; цена: {recipe.price} руб."
             )
         print("Каждый расчёт отдельный: напитки используют общие запасы.")
 
@@ -206,6 +229,7 @@ class CoffeeShop:
         print(f"\nБюджет: {self.budget} руб.")
         for key, item in INGREDIENTS.items():
             print(f"{item.name}: {self.stock[key]} {item.unit}")
+        print(f"Выручка (валовые продажи, не прибыль): {self.revenue} руб.")
 
 
 def main() -> None:
@@ -232,6 +256,7 @@ def main() -> None:
             print("10 — Купить недостающие ингредиенты под напиток")
             print("11 — Пригласить посетителя")
             print("12 — Посмотреть текущий заказ")
+            print("13 — Приготовить и продать текущий заказ")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -253,6 +278,15 @@ def main() -> None:
                 continue
             if choice == "12":
                 shop.show_order()
+                continue
+            if choice == "13":
+                try:
+                    total = shop.serve_order()
+                except ValueError as error:
+                    print(error)
+                else:
+                    print(f"Заказ выполнен! Получено: {total} руб. Можно пригласить следующего посетителя.")
+                    shop.show_status()
                 continue
             if choice in ("8", "9", "10"):
                 print("Выберите напиток:")
@@ -292,7 +326,7 @@ def main() -> None:
                 else:
                     print(
                         f"Партия готова: {RECIPES[drink_key].name}, чашек: {quantity}. "
-                        "Продажа напитков пока недоступна."
+                        "Учебное приготовление без продажи; заказ не завершён."
                     )
                     shop.show_status()
                 continue
@@ -304,12 +338,12 @@ def main() -> None:
                     print(error)
                 else:
                     drink = RECIPES[drink_key].name
-                    print(f"{drink} готов! Продажа напитков пока недоступна.")
+                    print(f"{drink} готов! Учебное приготовление без продажи; заказ не завершён.")
                     shop.show_status()
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:
