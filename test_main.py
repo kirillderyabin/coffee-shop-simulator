@@ -1,5 +1,6 @@
 import unittest
 from contextlib import redirect_stdout
+from copy import deepcopy
 from io import StringIO
 from unittest.mock import patch
 
@@ -635,6 +636,94 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(shop.current_order, Order("latte", 2))
         self.assertEqual(shop.revenue, 120)
         self.assertEqual(shop.budget, 2820)
+
+
+class SalesStatisticsTests(unittest.TestCase):
+    def test_multiple_orders_accumulate_cups_and_revenue_by_drink(self):
+        shop = CoffeeShop(stock={"coffee": 500, "milk": 2000})
+        for _ in range(4):
+            shop.invite_visitor()
+            shop.serve_order()
+        self.assertEqual(shop.served_orders, 4)
+        self.assertEqual(shop.sold_cups, 7)
+        self.assertEqual(shop.revenue, 1180)
+        self.assertEqual(
+            {key: (sale.cups, sale.revenue) for key, sale in shop.sales.items()},
+            {"espresso": (2, 240), "latte": (2, 400), "cappuccino": (3, 540)},
+        )
+        self.assertEqual(sum(sale.revenue for sale in shop.sales.values()), shop.revenue)
+
+    def test_failed_service_and_repeat_do_not_change_statistics(self):
+        for stock in ({"coffee": 35, "milk": 400}, {"coffee": 36, "milk": 399}):
+            with self.subTest(stock=stock):
+                shop = CoffeeShop(stock=stock.copy(), current_order=Order("latte", 2))
+                before = deepcopy(shop)
+                with self.assertRaises(ValueError):
+                    shop.serve_order()
+                self.assertEqual(shop, before)
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        for after_sale in (False, True):
+            with self.subTest(after_sale=after_sale):
+                if after_sale:
+                    shop.invite_visitor()
+                    shop.serve_order()
+                before = deepcopy(shop)
+                with self.assertRaises(ValueError):
+                    shop.serve_order()
+                self.assertEqual(shop, before)
+
+    def test_training_and_purchases_do_not_count_as_sales(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        shop.buy_missing("latte", 3)
+        order = shop.invite_visitor()
+        shop.prepare_espresso()
+        shop.prepare_latte()
+        shop.prepare_drink("cappuccino", 2)
+        self.assertEqual(shop.served_orders, 0)
+        self.assertEqual(shop.sold_cups, 0)
+        self.assertEqual(shop.revenue, 0)
+        self.assertTrue(all(sale.cups == sale.revenue == 0 for sale in shop.sales.values()))
+        self.assertIs(shop.current_order, order)
+
+    def test_view_is_read_only_before_and_after_sales(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        for after_sale in (False, True):
+            with self.subTest(after_sale=after_sale):
+                if after_sale:
+                    shop.invite_visitor()
+                    shop.serve_order()
+                before = deepcopy(shop)
+                output = StringIO()
+                with redirect_stdout(output):
+                    shop.show_sales()
+                    shop.show_sales()
+                self.assertEqual(shop, before)
+                count = 1 if after_sale else 0
+                self.assertIn(f"Обслужено заказов: {count}", output.getvalue())
+                self.assertIn(f"Продано чашек: {count}", output.getvalue())
+                self.assertIn("Латте: чашек — 0, выручка — 0 руб.", output.getvalue())
+
+    def test_shops_have_independent_statistics(self):
+        first = CoffeeShop(stock={"coffee": 18, "milk": 0})
+        second = CoffeeShop()
+        first.invite_visitor()
+        first.serve_order()
+        self.assertEqual(second.sales["espresso"].cups, 0)
+        self.assertEqual(second.served_orders, 0)
+
+    def test_menu_shows_statistics_after_service(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=["14", "11", "13", "14", "0"]):
+                with redirect_stdout(output):
+                    main()
+        text = output.getvalue()
+        self.assertIn("Обслужено заказов: 0", text)
+        self.assertIn("Обслужено заказов: 1", text)
+        self.assertIn("Эспрессо: чашек — 1, выручка — 120 руб.", text)
+        self.assertEqual(shop.sold_cups, 1)
 
 
 if __name__ == "__main__":

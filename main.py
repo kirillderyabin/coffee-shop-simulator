@@ -85,6 +85,12 @@ class Order:
 
 
 @dataclass
+class DrinkSales:
+    cups: int = 0
+    revenue: int = 0
+
+
+@dataclass
 class CoffeeShop:
     budget: int = 3000
     stock: dict[str, int] = field(
@@ -93,6 +99,23 @@ class CoffeeShop:
     current_order: Order | None = None
     visitors_invited: int = 0
     revenue: int = 0
+    served_orders: int = 0
+    sales: dict[str, DrinkSales] = field(
+        default_factory=lambda: {key: DrinkSales() for key in RECIPES}
+    )
+
+    @property
+    def sold_cups(self) -> int:
+        return sum(sale.cups for sale in self.sales.values())
+
+    def show_sales(self) -> None:
+        print("\nСтатистика продаж за текущую сессию:")
+        print(f"Обслужено заказов: {self.served_orders}")
+        print(f"Продано чашек: {self.sold_cups}")
+        print(f"Выручка (валовые продажи, не прибыль): {self.revenue} руб.")
+        for key, recipe in RECIPES.items():
+            sale = self.sales[key]
+            print(f"{recipe.name}: чашек — {sale.cups}, выручка — {sale.revenue} руб.")
 
     def invite_visitor(self) -> Order:
         """Пригласить посетителя по предсказуемому циклу без замены заказа."""
@@ -125,6 +148,9 @@ class CoffeeShop:
         self.prepare_drink(order.drink, order.quantity)
         self.budget += total
         self.revenue += total
+        self.served_orders += 1
+        self.sales[order.drink].cups += order.quantity
+        self.sales[order.drink].revenue += total
         self.current_order = None
         return total
 
@@ -257,6 +283,7 @@ def main() -> None:
             print("11 — Пригласить посетителя")
             print("12 — Посмотреть текущий заказ")
             print("13 — Приготовить и продать текущий заказ")
+            print("14 — Статистика продаж")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -278,6 +305,9 @@ def main() -> None:
                 continue
             if choice == "12":
                 shop.show_order()
+                continue
+            if choice == "14":
+                shop.show_sales()
                 continue
             if choice == "13":
                 try:
@@ -343,7 +373,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13", "14"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:
