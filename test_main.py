@@ -726,5 +726,87 @@ class SalesStatisticsTests(unittest.TestCase):
         self.assertEqual(shop.sold_cups, 1)
 
 
+class DeclineOrderTests(unittest.TestCase):
+    def shop_with_sale_and_waiting_order(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        shop.invite_visitor()
+        shop.serve_order()
+        shop.invite_visitor()
+        return shop
+
+    def run_menu(self, shop, inputs):
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=inputs):
+                with redirect_stdout(output):
+                    main()
+        return output.getvalue()
+
+    def test_decline_changes_only_current_order(self):
+        shop = self.shop_with_sale_and_waiting_order()
+        before = deepcopy(shop)
+        self.assertEqual(shop.decline_order(), Order("latte", 2))
+        before.current_order = None
+        self.assertEqual(shop, before)
+
+    def test_no_order_and_repeated_decline_leave_state_unchanged(self):
+        shop = self.shop_with_sale_and_waiting_order()
+        shop.decline_order()
+        before = deepcopy(shop)
+        for _ in range(2):
+            with self.assertRaisesRegex(ValueError, "Текущего заказа нет"):
+                shop.decline_order()
+            self.assertEqual(shop, before)
+
+    def test_can_invite_next_visitor_after_decline(self):
+        shop = CoffeeShop()
+        shop.invite_visitor()
+        shop.decline_order()
+        self.assertEqual(shop.invite_visitor(), Order("latte", 2))
+        self.assertEqual(shop.visitors_invited, 2)
+        self.assertEqual(shop.served_orders, 0)
+        self.assertEqual(shop.revenue, 0)
+
+    def test_menu_shows_order_before_confirmation_and_declines(self):
+        shop = self.shop_with_sale_and_waiting_order()
+        before = deepcopy(shop)
+        shown_when_prompted = []
+        output = StringIO()
+
+        def answer(prompt):
+            if "Отказаться от этого заказа" in prompt:
+                shown_when_prompted.append(output.getvalue())
+                return " Да "
+            return next(choices)
+
+        choices = iter(["15", "0"])
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=answer):
+                with redirect_stdout(output):
+                    main()
+        self.assertEqual(len(shown_when_prompted), 1)
+        self.assertIn("Текущий заказ: Латте, чашек: 2", shown_when_prompted[0])
+        self.assertIn("Сумма заказа: 400 руб.", shown_when_prompted[0])
+        self.assertIn("Заказ отклонён", output.getvalue())
+        before.current_order = None
+        self.assertEqual(shop, before)
+
+    def test_menu_without_explicit_confirmation_preserves_everything(self):
+        for answer in ("нет", "", "yes", "непонятно"):
+            with self.subTest(answer=answer):
+                shop = self.shop_with_sale_and_waiting_order()
+                before = deepcopy(shop)
+                text = self.run_menu(shop, ["15", answer, "0"])
+                self.assertIn("Текущий заказ сохранён", text)
+                self.assertEqual(shop, before)
+
+    def test_menu_without_order_does_not_request_confirmation(self):
+        shop = CoffeeShop()
+        before = deepcopy(shop)
+        text = self.run_menu(shop, ["15", "0"])
+        self.assertIn("Текущего заказа нет", text)
+        self.assertEqual(shop, before)
+
+
 if __name__ == "__main__":
     unittest.main()

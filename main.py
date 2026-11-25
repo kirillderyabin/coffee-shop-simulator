@@ -139,6 +139,14 @@ class CoffeeShop:
         print(f"Цена за чашку: {RECIPES[order.drink].price} руб. Сумма заказа: {order.total} руб.")
         print("Заказ ожидает обслуживания. Для приготовления и продажи выберите пункт 13.")
 
+    def decline_order(self) -> Order:
+        """Отклонить заказ без изменения ресурсов и успешных продаж."""
+        if self.current_order is None:
+            raise ValueError("Текущего заказа нет. Пригласите посетителя через пункт 11.")
+        order = self.current_order
+        self.current_order = None
+        return order
+
     def serve_order(self) -> int:
         """Приготовить весь заказ и получить оплату ровно один раз."""
         if self.current_order is None:
@@ -284,6 +292,7 @@ def main() -> None:
             print("12 — Посмотреть текущий заказ")
             print("13 — Приготовить и продать текущий заказ")
             print("14 — Статистика продаж")
+            print("15 — Отказаться от текущего заказа")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -308,6 +317,17 @@ def main() -> None:
                 continue
             if choice == "14":
                 shop.show_sales()
+                continue
+            if choice == "15":
+                shop.show_order()
+                if shop.current_order is None:
+                    continue
+                answer = input('Отказаться от этого заказа? Введите «да»: ')
+                if answer.strip().lower() != "да":
+                    print("Отказ не подтверждён. Текущий заказ сохранён.")
+                    continue
+                shop.decline_order()
+                print("Заказ отклонён без оплаты и списания ингредиентов. Можно пригласить следующего посетителя.")
                 continue
             if choice == "13":
                 try:
@@ -373,7 +393,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13", "14"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13", "14", "15"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:
