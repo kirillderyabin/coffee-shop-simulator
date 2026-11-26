@@ -100,6 +100,7 @@ class CoffeeShop:
     visitors_invited: int = 0
     revenue: int = 0
     served_orders: int = 0
+    purchase_expenses: int = 0
     sales: dict[str, DrinkSales] = field(
         default_factory=lambda: {key: DrinkSales() for key in RECIPES}
     )
@@ -108,11 +109,18 @@ class CoffeeShop:
     def sold_cups(self) -> int:
         return sum(sale.cups for sale in self.sales.values())
 
+    @property
+    def cash_result(self) -> int:
+        return self.revenue - self.purchase_expenses
+
     def show_sales(self) -> None:
         print("\nСтатистика продаж за текущую сессию:")
         print(f"Обслужено заказов: {self.served_orders}")
         print(f"Продано чашек: {self.sold_cups}")
         print(f"Выручка (валовые продажи, не прибыль): {self.revenue} руб.")
+        print(f"Расходы на закупки: {self.purchase_expenses} руб.")
+        print(f"Денежный результат сессии (выручка минус закупки): {self.cash_result} руб.")
+        print("Это не бухгалтерская прибыль: часть ингредиентов может оставаться на складе.")
         for key, recipe in RECIPES.items():
             sale = self.sales[key]
             print(f"{recipe.name}: чашек — {sale.cups}, выручка — {sale.revenue} руб.")
@@ -176,6 +184,7 @@ class CoffeeShop:
             )
         self.budget -= cost
         self.stock[ingredient] += item.amount * quantity
+        self.purchase_expenses += cost
         return cost
 
     def prepare_drink(self, drink: str, quantity: int = 1) -> None:
@@ -220,6 +229,7 @@ class CoffeeShop:
         for ingredient, need in plan.items():
             self.stock[ingredient] += need.packages * INGREDIENTS[ingredient].amount
         self.budget -= total
+        self.purchase_expenses += total
         return total
 
     def show_purchase_plan(self, drink: str, quantity: int) -> int:

@@ -808,5 +808,83 @@ class DeclineOrderTests(unittest.TestCase):
         self.assertEqual(shop, before)
 
 
+class FinanceTests(unittest.TestCase):
+    def test_initial_budget_is_not_revenue_or_result(self):
+        shop = CoffeeShop(budget=5000)
+        self.assertEqual((shop.revenue, shop.purchase_expenses, shop.cash_result), (0, 0, 0))
+
+    def test_both_purchase_paths_accumulate_expenses_once(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 2)
+        self.assertEqual(shop.purchase_expenses, 600)
+        shop.buy_missing("latte", 6)
+        self.assertEqual(shop.purchase_expenses, 800)
+        self.assertEqual(shop.cash_result, -800)
+        self.assertEqual(shop.budget, 2200)
+        self.assertEqual(shop.revenue, 0)
+        before = deepcopy(shop)
+        self.assertEqual(shop.buy_missing("latte", 6), 0)
+        self.assertEqual(shop, before)
+
+    def test_rejected_purchases_preserve_expenses_and_state(self):
+        shop = CoffeeShop(budget=399)
+        for operation in (
+            lambda: shop.buy("coffee", 2),
+            lambda: shop.buy("milk", 0),
+            lambda: shop.buy_missing("latte", 3),
+            lambda: shop.buy_missing("latte", -1),
+        ):
+            before = deepcopy(shop)
+            with self.assertRaises(ValueError):
+                operation()
+            self.assertEqual(shop, before)
+
+    def test_sales_change_result_without_changing_expenses(self):
+        shop = CoffeeShop()
+        shop.buy_missing("latte", 3)
+        self.assertEqual(shop.cash_result, -400)
+        shop.invite_visitor()
+        shop.serve_order()
+        self.assertEqual(shop.cash_result, -280)
+        shop.invite_visitor()
+        shop.serve_order()
+        self.assertEqual(shop.cash_result, 120)
+        self.assertEqual(shop.purchase_expenses, 400)
+        self.assertEqual(shop.revenue, 520)
+        self.assertEqual(shop.budget, 3000 + shop.cash_result)
+        before = (shop.revenue, shop.purchase_expenses, shop.cash_result)
+        shop.prepare_drink("cappuccino", 2)
+        self.assertEqual((shop.revenue, shop.purchase_expenses, shop.cash_result), before)
+        shop.invite_visitor()
+        shop.decline_order()
+        self.assertEqual((shop.revenue, shop.purchase_expenses, shop.cash_result), before)
+
+    def test_cancelled_purchase_menu_and_order_decline_do_not_add_expenses(self):
+        shop = CoffeeShop()
+        before = deepcopy(shop)
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=["10", "5", "3", "нет", "0"]):
+                with redirect_stdout(StringIO()):
+                    main()
+        self.assertEqual(shop, before)
+        shop.invite_visitor()
+        shop.decline_order()
+        self.assertEqual(shop.purchase_expenses, 0)
+
+    def test_finance_view_in_menu_is_read_only(self):
+        shop = CoffeeShop()
+        shop.buy("coffee", 1)
+        before = deepcopy(shop)
+        output = StringIO()
+        with patch("main.CoffeeShop", return_value=shop):
+            with patch("builtins.input", side_effect=["14", "14", "0"]):
+                with redirect_stdout(output):
+                    main()
+        self.assertEqual(shop, before)
+        self.assertIn("Расходы на закупки: 300 руб.", output.getvalue())
+        self.assertIn("Денежный результат сессии (выручка минус закупки): -300 руб.", output.getvalue())
+        self.assertIn("Это не бухгалтерская прибыль", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
