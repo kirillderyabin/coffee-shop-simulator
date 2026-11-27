@@ -90,6 +90,19 @@ class DrinkSales:
     revenue: int = 0
 
 
+@dataclass(frozen=True)
+class Receipt:
+    number: int
+    drink: str
+    drink_name: str
+    quantity: int
+    unit_price: int
+
+    @property
+    def total(self) -> int:
+        return self.unit_price * self.quantity
+
+
 @dataclass
 class CoffeeShop:
     budget: int = 3000
@@ -104,6 +117,18 @@ class CoffeeShop:
     sales: dict[str, DrinkSales] = field(
         default_factory=lambda: {key: DrinkSales() for key in RECIPES}
     )
+    receipts: list[Receipt] = field(default_factory=list)
+
+    def show_receipts(self) -> None:
+        if not self.receipts:
+            print("История продаж пуста. Пока нет успешно обслуженных заказов.")
+            return
+        print("\nИстория успешно обслуженных заказов за текущую сессию:")
+        for receipt in self.receipts:
+            print(
+                f"Чек №{receipt.number}: {receipt.drink_name}, чашек: {receipt.quantity}; "
+                f"цена за чашку: {receipt.unit_price} руб.; итог: {receipt.total} руб."
+            )
 
     @property
     def sold_cups(self) -> int:
@@ -160,13 +185,18 @@ class CoffeeShop:
         if self.current_order is None:
             raise ValueError("Текущего заказа нет. Пригласите посетителя через пункт 11.")
         order = self.current_order
-        total = order.total
+        recipe = RECIPES[order.drink]
+        receipt = Receipt(
+            self.served_orders + 1, order.drink, recipe.name, order.quantity, recipe.price
+        )
+        total = receipt.total
         self.prepare_drink(order.drink, order.quantity)
         self.budget += total
         self.revenue += total
         self.served_orders += 1
         self.sales[order.drink].cups += order.quantity
         self.sales[order.drink].revenue += total
+        self.receipts.append(receipt)
         self.current_order = None
         return total
 
@@ -303,6 +333,7 @@ def main() -> None:
             print("13 — Приготовить и продать текущий заказ")
             print("14 — Статистика продаж")
             print("15 — Отказаться от текущего заказа")
+            print("16 — История чеков")
             print("0 — Выход (прогресс пока не сохраняется)")
             choice = input("Выберите действие: ").strip()
             if choice == "0":
@@ -327,6 +358,9 @@ def main() -> None:
                 continue
             if choice == "14":
                 shop.show_sales()
+                continue
+            if choice == "16":
+                shop.show_receipts()
                 continue
             if choice == "15":
                 shop.show_order()
@@ -403,7 +437,7 @@ def main() -> None:
                 continue
             ingredient = {"2": "coffee", "3": "milk"}.get(choice)
             if ingredient is None:
-                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13", "14", "15"])
+                options = ", ".join(["0", "1", "2", "3", *drink_choices, "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"])
                 print(f"Выберите пункт меню: {options}.")
                 continue
             try:

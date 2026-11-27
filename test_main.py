@@ -1,6 +1,7 @@
 import unittest
 from contextlib import redirect_stdout
 from copy import deepcopy
+from dataclasses import FrozenInstanceError, replace
 from io import StringIO
 from unittest.mock import patch
 
@@ -884,6 +885,90 @@ class FinanceTests(unittest.TestCase):
         self.assertIn("Расходы на закупки: 300 руб.", output.getvalue())
         self.assertIn("Денежный результат сессии (выручка минус закупки): -300 руб.", output.getvalue())
         self.assertIn("Это не бухгалтерская прибыль", output.getvalue())
+
+
+class ReceiptTests(unittest.TestCase):
+    def test_receipts_match_totals_and_sales_breakdown(self):
+        shop = CoffeeShop(stock={"coffee": 500, "milk": 2000})
+        for _ in range(4):
+            shop.invite_visitor()
+            shop.serve_order()
+        self.assertEqual(
+            [(r.number, r.drink_name, r.quantity, r.unit_price, r.total) for r in shop.receipts],
+            [(1, "Эспрессо", 1, 120, 120), (2, "Латте", 2, 200, 400),
+             (3, "Капучино", 3, 180, 540), (4, "Эспрессо", 1, 120, 120)],
+        )
+        self.assertEqual(len(shop.receipts), shop.served_orders)
+        self.assertEqual(sum(r.quantity for r in shop.receipts), shop.sold_cups)
+        self.assertEqual(sum(r.total for r in shop.receipts), shop.revenue)
+        for drink, sale in shop.sales.items():
+            self.assertEqual(sum(r.quantity for r in shop.receipts if r.drink == drink), sale.cups)
+            self.assertEqual(sum(r.total for r in shop.receipts if r.drink == drink), sale.revenue)
+
+    def test_receipt_keeps_sale_price_name_and_quantity(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        shop.invite_visitor()
+        shop.serve_order()
+        receipt = shop.receipts[0]
+        changed_recipe = replace(RECIPES["espresso"], name="Новое название", price=150)
+        with patch.dict(RECIPES, {"espresso": changed_recipe}):
+            self.assertEqual((receipt.drink_name, receipt.unit_price, receipt.total), ("Эспрессо", 120, 120))
+            output = StringIO()
+            with redirect_stdout(output):
+                shop.show_receipts()
+            self.assertIn("Эспрессо, чашек: 1; цена за чашку: 120 руб.; итог: 120 руб.", output.getvalue())
+        with self.assertRaises(FrozenInstanceError):
+            receipt.quantity = 2
+
+    def test_failed_and_repeated_service_create_no_receipts(self):
+        for stock in ({"coffee": 35, "milk": 400}, {"coffee": 36, "milk": 399}):
+            shop = CoffeeShop(stock=stock.copy(), current_order=Order("latte", 2))
+            before = deepcopy(shop)
+            with self.assertRaises(ValueError):
+                shop.serve_order()
+            self.assertEqual(shop, before)
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        shop.invite_visitor()
+        shop.serve_order()
+        before = deepcopy(shop)
+        with self.assertRaises(ValueError):
+            shop.serve_order()
+        self.assertEqual(shop, before)
+        self.assertEqual(len(shop.receipts), 1)
+
+    def test_decline_and_training_do_not_create_receipts_or_skip_receipt_numbers(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        shop.invite_visitor()
+        shop.prepare_drink("espresso", 2)
+        shop.decline_order()
+        self.assertEqual(shop.receipts, [])
+        shop.invite_visitor()
+        shop.serve_order()
+        self.assertEqual(shop.receipts[0].number, 1)
+        self.assertEqual(shop.receipts[0].drink, "latte")
+
+    def test_empty_and_populated_history_views_are_read_only(self):
+        shop = CoffeeShop(stock={"coffee": 250, "milk": 1000})
+        for sold in (False, True):
+            if sold:
+                shop.invite_visitor()
+                shop.serve_order()
+            before = deepcopy(shop)
+            output = StringIO()
+            with patch("main.CoffeeShop", return_value=shop):
+                with patch("builtins.input", side_effect=["16", "16", "0"]):
+                    with redirect_stdout(output):
+                        main()
+            self.assertEqual(shop, before)
+            expected = "Чек №1" if sold else "История продаж пуста"
+            self.assertEqual(output.getvalue().count(expected), 2)
+
+    def test_histories_are_independent(self):
+        shop = CoffeeShop(stock={"coffee": 18, "milk": 0})
+        other = CoffeeShop()
+        shop.invite_visitor()
+        shop.serve_order()
+        self.assertEqual(other.receipts, [])
 
 
 if __name__ == "__main__":
